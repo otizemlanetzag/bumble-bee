@@ -12,23 +12,20 @@ use std::time::Duration;
 pub const COOKIE_CLEANUP_INTERVAL: Duration = Duration::from_secs(60 * 60);
 
 /// Adapter implemented by the browser/embedder to control its complete cookie store.
-///
 /// The implementation must delete the complete cookie store, not merely cookies for
 /// the currently loaded URL.
 pub trait CookieStoreController: Send + Sync + 'static {
     fn clear_all_cookies(&self);
 }
 
-/// Runs one cleanup operation. Kept separate so the browser integration and tests can
-/// invoke exactly the same operation without duplicating policy logic.
+/// Runs one cleanup operation. The browser integration and tests can invoke exactly
+/// the same operation without duplicating policy logic.
 pub fn cleanup_once(controller: &dyn CookieStoreController) {
     controller.clear_all_cookies();
 }
 
 /// Background service that performs a complete cookie-store cleanup every hour.
-///
-/// Dropping the service requests a clean shutdown and joins the worker, so it does not
-/// leave an orphaned thread behind.
+/// Dropping the service requests a clean shutdown and joins the worker.
 pub struct CookieCleanupService {
     stop: Option<SyncSender<()>>,
     worker: Option<JoinHandle<()>>,
@@ -55,7 +52,9 @@ impl CookieCleanupService {
 
     /// Stop the worker immediately. No extra cleanup is triggered during shutdown.
     pub fn stop(&mut self) {
-        self.stop.take();
+        if let Some(stop) = self.stop.take() {
+            let _ = stop.send(());
+        }
         if let Some(worker) = self.worker.take() {
             let _ = worker.join();
         }
@@ -64,12 +63,7 @@ impl CookieCleanupService {
 
 impl Drop for CookieCleanupService {
     fn drop(&mut self) {
-        if let Some(stop) = self.stop.take() {
-            let _ = stop.send(());
-        }
-        if let Some(worker) = self.worker.take() {
-            let _ = worker.join();
-        }
+        self.stop();
     }
 }
 
