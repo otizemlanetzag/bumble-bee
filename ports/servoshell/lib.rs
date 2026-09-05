@@ -17,6 +17,7 @@ mod desktop;
 mod headless;
 mod init;
 pub(crate) mod os_sandbox;
+pub(crate) mod process_hardening;
 mod panic_hook;
 mod prefs;
 mod resources;
