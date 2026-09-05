@@ -22,6 +22,7 @@ mod parser;
 mod prefs;
 pub(crate) mod language_engine;
 pub(crate) mod code_security_scanner;
+mod os_sandbox;
 #[cfg(not(any(target_os = "android", target_env = "ohos")))]
 mod resources;
 mod running_app_state;
@@ -41,6 +42,9 @@ pub mod platform {
 
 #[cfg(not(any(target_os = "android", target_env = "ohos")))]
 pub fn main() {
+    if let Err(error) = os_sandbox::apply() {
+        log::warn!("Bumble Bee OS sandbox hardening was not fully applied: {error}");
+    }
     desktop::cli::main()
 }
 
@@ -78,191 +82,12 @@ pub fn init_tracing(filter_directives: Option<&str>) {
 
         let filter_builder = tracing_subscriber::EnvFilter::builder()
             .with_default_directive(tracing::level_filters::LevelFilter::OFF.into());
-        let filter = if let Some(filters) = &filter_directives {
-            filter_builder.parse_lossy(filters)
-        } else {
-            filter_builder
-                .with_env_var("SERVO_TRACING")
-                .from_env_lossy()
-        };
 
-        let subscriber = subscriber.with(filter);
+        let filter = filter_builder
+            .parse(filter_directives.unwrap_or("warn"))
+            .expect("failed to parse filter directives");
+        let subscriber = subscriber.with(tracing_subscriber::filter::Targets::from(filter));
         tracing::subscriber::set_global_default(subscriber)
-            .expect("Failed to set tracing subscriber");
-
-        servo::profile_traits::info_event!(
-            "servoshell::startup_tracing_initialized",
-            wallclock_ns = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|duration| duration.as_nanos() as u64)
-                .unwrap_or(0)
-        );
-    }
-}
-
-pub const VERSION: &str = concat!("Servo ", env!("CARGO_PKG_VERSION"), "-", env!("GIT_SHA"));
-
-#[cfg(all(feature = "tracing-hitrace", target_env = "ohos"))]
-#[derive(Default)]
-struct HitraceLayer {}
-
-cfg_if! {
-    if #[cfg(all(feature = "tracing-hitrace", target_env = "ohos"))] {
-        use std::cell::RefCell;
-        use std::fmt;
-        use std::fmt::Write;
-
-        use tracing::field::{Field, Visit};
-        use tracing::Level;
-        use tracing::span::Id;
-        use tracing::Subscriber;
-        use tracing_subscriber::Layer;
-
-        #[derive(Default)]
-        struct HitraceFields(String);
-
-        impl HitraceFields {
-            fn record_value(&mut self, field: &Field, value: &dyn fmt::Debug) {
-                if field.name() == "servo_profiling" {
-                    return;
-                }
-
-                if !self.0.is_empty() {
-                    self.0.push(',');
-                }
-                write!(&mut self.0, "{}={value:?}", field.name())
-                    .expect("Writing to a String should never fail");
-            }
-        }
-
-        impl Visit for HitraceFields {
-            fn record_debug(&mut self, field: &Field, value: &dyn fmt::Debug) {
-                self.record_value(field, value);
-            }
-        }
-
-        #[cfg(debug_assertions)]
-        thread_local! {
-            static HITRACE_NAME_STACK: RefCell<Vec<String>> = RefCell::default();
-        }
-
-        fn convert_level(tracing_level: Level) -> hitrace::api_19::HiTraceOutputLevel {
-            if tracing_level < Level::INFO {
-                Level::INFO.into()
-            } else {
-                tracing_level.into()
-            }
-        }
-
-        impl<S: Subscriber + for<'lookup> tracing_subscriber::registry::LookupSpan<'lookup>>
-            Layer<S> for HitraceLayer
-        {
-            fn on_new_span(
-                &self,
-                attrs: &tracing::span::Attributes<'_>,
-                id: &Id,
-                ctx: tracing_subscriber::layer::Context<'_, S>,
-            ) {
-                if attrs.metadata().fields().field("servo_profiling").is_none() {
-                    return;
-                }
-
-                let Some(span) = ctx.span(id) else {
-                    return;
-                };
-
-                let mut fields = HitraceFields::default();
-                attrs.record(&mut fields);
-                span.extensions_mut().insert(fields);
-            }
-
-            fn on_record(
-                &self,
-                id: &Id,
-                values: &tracing::span::Record<'_>,
-                ctx: tracing_subscriber::layer::Context<'_, S>,
-            ) {
-                let Some(span) = ctx.span(id) else {
-                    return;
-                };
-
-                let mut extensions = span.extensions_mut();
-                let Some(fields) = extensions.get_mut::<HitraceFields>() else {
-                    return;
-                };
-
-                values.record(fields);
-            }
-
-            fn on_enter(&self, id: &Id, ctx: tracing_subscriber::layer::Context<'_, S>) {
-                let Some(span) = ctx.span(id) else {
-                    return;
-                };
-                let extensions = span.extensions();
-                let Some(fields) = extensions.get::<HitraceFields>() else {
-                    return;
-                };
-                let custom_args = std::ffi::CString::new(fields.0.as_str())
-                    .expect("Failed to convert to CString");
-
-                let metadata = span.metadata();
-                let level = convert_level(*metadata.level());
-                let name = metadata.name();
-
-                #[cfg(debug_assertions)]
-                HITRACE_NAME_STACK.with_borrow_mut(|stack| stack.push(name.to_owned()));
-
-                hitrace::start_trace_ex(
-                    level,
-                    &std::ffi::CString::new(name)
-                        .expect("Failed to convert str to CString"),
-                    &custom_args,
-                );
-            }
-
-            fn on_event(&self, event: &tracing::Event<'_>, _ctx: tracing_subscriber::layer::Context<'_, S>) {
-                let mut fields = HitraceFields::default();
-                event.record(&mut fields);
-                let metadata = event.metadata();
-                let level = convert_level(*metadata.level());
-
-                hitrace::start_trace_ex(
-                    level,
-                    &std::ffi::CString::new(metadata.name())
-                        .expect("Failed to convert str to CString"),
-                    &std::ffi::CString::new(fields.0)
-                        .expect("Failed to convert str to CString"),
-                );
-
-                hitrace::finish_trace_ex(level);
-            }
-
-            fn on_exit(&self, id: &Id, ctx: tracing_subscriber::layer::Context<'_, S>) {
-                let Some(span) = ctx.span(id) else {
-                    return;
-                };
-                if span.extensions().get::<HitraceFields>().is_none() {
-                    return;
-                }
-
-                let level = convert_level(*span.metadata().level());
-                hitrace::finish_trace_ex(level);
-
-                #[cfg(debug_assertions)]
-                HITRACE_NAME_STACK.with_borrow_mut(|stack| {
-                    let metadata = span.metadata();
-                    if stack.last().map(|name| &**name) != Some(metadata.name()) {
-                        log::error!(
-                            "Tracing span out of order: {} (stack: {:?})",
-                            metadata.name(),
-                            stack
-                        );
-                    }
-                    if !stack.is_empty() {
-                        stack.pop();
-                    }
-                });
-            }
-        }
+            .expect("failed to set global tracing subscriber");
     }
 }
