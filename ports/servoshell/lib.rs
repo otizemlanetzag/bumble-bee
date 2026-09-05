@@ -16,7 +16,7 @@ mod crash_handler;
 mod desktop;
 mod headless;
 mod init;
-mod os_sandbox;
+pub(crate) mod os_sandbox;
 mod panic_hook;
 mod prefs;
 mod resources;
