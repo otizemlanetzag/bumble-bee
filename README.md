@@ -1,34 +1,34 @@
-# The Servo Parallel Browser Engine Project
+# The Bumble Bee Parallel Browser Engine Project
 
-Servo is a prototype web browser engine written in the
+Bumble Bee is a prototype web browser engine written in the
 [Rust](https://github.com/rust-lang/rust) language. It is currently developed on
 64-bit macOS, 64-bit Linux, 64-bit Windows, 64-bit OpenHarmony, and Android.
 
-Servo welcomes contribution from everyone. Check out:
+Bumble Bee welcomes contribution from everyone. Check out:
 
-- The [Servo Book](https://book.servo.org) for documentation
-- [servo.org](https://servo.org/) for news and guides
+- The [Bumble Bee Book](https://book.servo.org) for documentation
+- The Bumble Bee website for news and guides
 
-Coordination of Servo development happens:
+Coordination of Bumble Bee development happens:
 - Here in the Github Issues
-- On the [Servo Zulip](https://servo.zulipchat.com/)
-- In video calls advertised in the [Servo Project](https://github.com/servo/project/issues) repo.
+- In the Bumble Bee community
+- In video calls and project discussions.
 
 ## Getting started
 
-For more detailed build instructions, see the Servo Book under [Getting the Code] and [Building Servo].
+For more detailed build instructions, see the Bumble Bee documentation under [Getting the Code] and [Building Bumble Bee].
 
 [Getting the Code]: https://book.servo.org/building/getting-the-code.html
-[Building Servo]: https://book.servo.org/building/building.html
+[Building Bumble Bee]: https://book.servo.org/building/building.html
 
 ### macOS
 
 - Download and install [Xcode](https://developer.apple.com/xcode/) and [`brew`](https://brew.sh/).
-- Install `uv`: `curl -LsSf https://astral.sh/uv/install.sh | sh` 
-- Install `rustup`: `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
+- Install `uv`: `curl -LsSf https://astral.sh/uv/install.sh | sh`
+- Install `rustup`: `curl --proto '=https' -sSf https://sh.rustup.rs | sh`
 - Restart your shell to make sure `cargo` is available
 - Install the other dependencies: `./mach bootstrap`
-- Build servoshell: `./mach build`
+- Build Bumble Bee: `./mach build`
 
 ### Linux
 
@@ -37,11 +37,11 @@ For more detailed build instructions, see the Servo Book under [Getting the Code
   - Debian, Ubuntu: `sudo apt install curl`
   - Fedora: `sudo dnf install curl`
   - Gentoo: `sudo emerge net-misc/curl`
-- Install `uv`: `curl -LsSf https://astral.sh/uv/install.sh | sh` 
-- Install `rustup`: `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
+- Install `uv`: `curl -LsSf https://astral.sh/uv/install.sh | sh`
+- Install `rustup`: `curl --proto '=https' -sSf https://sh.rustup.rs | sh`
 - Restart your shell to make sure `cargo` is available
 - Install the other dependencies: `./mach bootstrap`
-- Build servoshell: `./mach build`
+- Build Bumble Bee: `./mach build`
 
 ### Windows
 
@@ -54,7 +54,7 @@ For more detailed build instructions, see the Servo Book under [Getting the Code
   - **C++ ATL for latest v143 build tools (x86 & x64)** (`Microsoft.VisualStudio.Component.VC.ATL`)
 - Restart your shell to make sure `cargo` is available
 - Install the other dependencies: `.\mach bootstrap`
-- Build servoshell: `.\mach build`
+- Build Bumble Bee: `.\mach build`
 
 ### Android
 
@@ -63,29 +63,12 @@ For more detailed build instructions, see the Servo Book under [Getting the Code
   - `ANDROID_NDK_ROOT`: `$ANDROID_SDK_ROOT/ndk/28.2.13676358/`
  `ANDROID_SDK_ROOT` can be any directory (such as `~/android-sdk`).
   All of the Android build dependencies will be installed there.
-- Install the latest version of the [Android command-line
-  tools](https://developer.android.com/studio#command-tools) to
-  `$ANDROID_SDK_ROOT/cmdline-tools/latest`.
-- Run the following command to install the necessary components:
-  ```shell
-  sudo $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --install \
-   "build-tools;36.0.0" \
-   "emulator" \
-   "ndk;28.2.13676358" \
-   "platform-tools" \
-   "platforms;android-37" \
-   "system-images;android-37;google_apis;x86_64"
-  ```
-- Follow the instructions above for the platform you are building on
+- Install the latest version of the [Android command-line tools](https://developer.android.com/studio#command-tools) to `$ANDROID_SDK_ROOT/cmdline-tools/latest`.
+- Run the necessary Android SDK installation commands as described in the Bumble Bee documentation.
 
 ### OpenHarmony
 
 - Follow the instructions above for the platform you are building on to prepare the environment.
 - Depending on the target distribution (e.g. `HarmonyOS NEXT` vs pure `OpenHarmony`) the build configuration will differ slightly.
-- Ensure that the following environment variables are set
-  - `DEVECO_SDK_HOME` (Required when targeting `HarmonyOS NEXT`)
-  - `OHOS_BASE_SDK_HOME` (Required when targeting `OpenHarmony`)
-  - `OHOS_SDK_NATIVE` (e.g. `${DEVECO_SDK_HOME}/default/openharmony/native` or `${OHOS_BASE_SDK_HOME}/${API_VERSION}/native`)
-  - `SERVO_OHOS_SIGNING_CONFIG`: Path to json file containing a valid signing configuration for the demo app.
-- Review the detailed instructions at [Building for OpenHarmony].
-- The target distribution can be modified by passing `--flavor=<default|harmonyos>` to `mach <build|package|install>`.
+- Ensure that the required OpenHarmony environment variables are set.
+- Review the detailed Bumble Bee documentation for OpenHarmony builds.
