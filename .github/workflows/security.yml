@@ -1,0 +1,38 @@
+name: Bumble Bee Security
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  security-layer:
+    name: Security layer tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Test GPLv3 security layer
+        run: cargo test --manifest-path security/Cargo.toml --locked
+
+  dependency-audit:
+    name: Dependency advisory audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-deny
+        run: cargo install cargo-deny --locked
+
+      - name: Check dependency advisories
+        run: cargo deny check advisories
