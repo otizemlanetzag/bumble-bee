@@ -47,6 +47,12 @@ pub fn main() {
                 }
             }
 
+            #[cfg(target_os = "linux")]
+            if let Err(error) = crate::linux_security::apply() {
+                eprintln!("Bumble Bee Linux kernel sandbox could not be applied: {error}");
+                std::process::exit(126);
+            }
+
             return servo::run_content_process(token);
         },
         ArgumentParsingResult::ChromeProcess(opts, preferences, servoshell_preferences) => {
