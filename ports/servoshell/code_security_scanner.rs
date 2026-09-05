@@ -2,12 +2,14 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-//! Local pre-execution scanner for downloaded/injected source code.
+//! Local pre-execution security gate for downloaded/injected source code.
 //!
-//! This is a defense-in-depth gate, not a malware detector. It blocks or
-//! quarantines high-risk browser escape patterns before source reaches the
-//! language lowering layer. It performs no network lookup and sends no source
-//! code anywhere.
+//! This is a defense-in-depth layer, not a malware detector. It performs no
+//! network lookup and never sends source code outside the browser process.
+
+mod execution_sandbox;
+
+pub(crate) use execution_sandbox::{preflight, SandboxAction, SandboxResult};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum ScanAction {
@@ -27,39 +29,41 @@ pub(crate) struct ScanResult {
     pub findings: Vec<Finding>,
 }
 
+/// Run the scanner after the resource has been fetched and before language
+/// lowering/execution. The sandbox preflight runs first so resource limits are
+/// enforced even when a source contains no known malicious signature.
 pub(crate) fn scan_source(source: &str) -> ScanResult {
-    let normalized = normalize(source);
     let mut findings = Vec::new();
 
-    // Dynamic code generation is a frequent injection primitive. The browser
-    // engine does not need these APIs for ordinary page scripts.
+    if let SandboxAction::Block = preflight(source).action {
+        findings.push(Finding {
+            rule: "execution-sandbox",
+            reason: preflight(source)
+                .reason
+                .unwrap_or("Source rejected by the execution sandbox"),
+        });
+    }
+
+    let normalized = normalize(source);
+
     match_pattern(&normalized, &mut findings, "dynamic-code", "eval(", "Dynamic code evaluation is blocked");
     match_pattern(&normalized, &mut findings, "dynamic-code", "function(", "Dynamic Function construction is blocked");
-
-    // JavaScript URL execution can turn data supplied to a URL/DOM sink into
-    // executable script.
     match_pattern(&normalized, &mut findings, "javascript-url", "javascript:", "javascript: URLs are blocked");
 
-    // Common string-to-DOM execution sinks. textContent/DOM node creation is
-    // intentionally not blocked because they do not parse HTML as script.
     match_pattern(&normalized, &mut findings, "html-injection", ".innerhtml=", "innerHTML assignment is blocked by the pre-execution policy");
     match_pattern(&normalized, &mut findings, "html-injection", ".outerhtml=", "outerHTML assignment is blocked by the pre-execution policy");
     match_pattern(&normalized, &mut findings, "html-injection", "insertadjacenthtml(", "insertAdjacentHTML is blocked by the pre-execution policy");
     match_pattern(&normalized, &mut findings, "html-injection", "document.write(", "document.write is blocked by the pre-execution policy");
 
-    // Explicit attempts to execute a Blob/data URL as a script are rejected.
     match_pattern(&normalized, &mut findings, "script-url", "data:text/javascript", "data: JavaScript URLs are blocked");
     match_pattern(&normalized, &mut findings, "script-url", "blob:", "Blob URLs are blocked in source execution");
 
-    // Browser-to-native escape mechanisms. These are especially important for
-    // INFRA because its old desktop interpreter used subprocess/PyInstaller.
     match_pattern(&normalized, &mut findings, "native-escape", "child_process", "Native process APIs are unavailable to page code");
     match_pattern(&normalized, &mut findings, "native-escape", "require('child_process')", "Native process APIs are unavailable to page code");
     match_pattern(&normalized, &mut findings, "native-escape", "require(\"child_process\")", "Native process APIs are unavailable to page code");
     match_pattern(&normalized, &mut findings, "native-escape", "pyinstaller", "External compiler execution is blocked");
     match_pattern(&normalized, &mut findings, "native-escape", "subprocess", "External process execution is blocked");
 
-    // Suspicious attempts to dynamically add executable script elements.
     if normalized.contains("createelement('script')") || normalized.contains("createelement(\"script\")") {
         findings.push(Finding {
             rule: "script-injection",
@@ -67,12 +71,7 @@ pub(crate) fn scan_source(source: &str) -> ScanResult {
         });
     }
 
-    let action = if findings.is_empty() {
-        ScanAction::Allow
-    } else {
-        ScanAction::Block
-    };
-
+    let action = if findings.is_empty() { ScanAction::Allow } else { ScanAction::Block };
     ScanResult { action, findings }
 }
 
@@ -116,8 +115,8 @@ mod tests {
     }
 
     #[test]
-    fn infra_native_escape_is_blocked() {
-        assert_eq!(scan_source("PACK").action, ScanAction::Allow);
-        assert_eq!(scan_source("subprocess.run(command)").action, ScanAction::Block);
+    fn sandbox_limits_are_enforced() {
+        let source = "x".repeat(execution_sandbox::MAX_SOURCE_BYTES + 1);
+        assert_eq!(scan_source(&source).action, ScanAction::Block);
     }
 }
