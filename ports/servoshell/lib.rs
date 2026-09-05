@@ -21,6 +21,7 @@ mod panic_hook;
 mod parser;
 mod prefs;
 pub(crate) mod language_engine;
+pub(crate) mod code_security_scanner;
 #[cfg(not(any(target_os = "android", target_env = "ohos")))]
 mod resources;
 mod running_app_state;
