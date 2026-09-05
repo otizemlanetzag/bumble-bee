@@ -18,6 +18,8 @@ mod headless;
 mod init;
 pub(crate) mod os_sandbox;
 pub(crate) mod process_hardening;
+#[cfg(target_os = "linux")]
+pub(crate) mod linux_security;
 mod panic_hook;
 mod prefs;
 mod resources;
