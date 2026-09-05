@@ -21,25 +21,32 @@ pub fn main() {
     let args: Vec<String> = env::args().skip(1).collect();
     let (opts, preferences, servoshell_preferences) = match parse_command_line_arguments(&*args) {
         ArgumentParsingResult::ContentProcess(token) => {
-            // The content process handles untrusted web content. Apply the
-            // OS-level hardening here, rather than to the browser/chrome
-            // process, so the browser can continue to act as the broker.
+            // Web content is untrusted. Apply independent hardening layers
+            // before entering Servo's content-process runtime.
             if let Err(error) = crate::os_sandbox::apply() {
                 #[cfg(any(target_os = "linux", target_os = "windows"))]
                 {
-                    eprintln!(
-                        "Bumble Bee content-process OS sandbox could not be applied: {error}"
-                    );
+                    eprintln!("Bumble Bee content-process OS sandbox could not be applied: {error}");
                     std::process::exit(126);
                 }
-
                 #[cfg(not(any(target_os = "linux", target_os = "windows")))]
                 {
-                    eprintln!(
-                        "Bumble Bee content-process OS sandbox is unavailable on this platform: {error}"
-                    );
+                    eprintln!("Bumble Bee content-process OS sandbox is unavailable: {error}");
                 }
             }
+
+            if let Err(error) = crate::process_hardening::apply() {
+                #[cfg(any(target_os = "linux", target_os = "windows"))]
+                {
+                    eprintln!("Bumble Bee content-process hardening could not be applied: {error}");
+                    std::process::exit(126);
+                }
+                #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+                {
+                    eprintln!("Bumble Bee content-process hardening is unavailable: {error}");
+                }
+            }
+
             return servo::run_content_process(token);
         },
         ArgumentParsingResult::ChromeProcess(opts, preferences, servoshell_preferences) => {
