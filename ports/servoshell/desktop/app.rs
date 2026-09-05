@@ -6,7 +6,11 @@
 
 use std::path::Path;
 use std::rc::Rc;
-use std::time::Instant;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::{sync_channel, RecvTimeoutError, SyncSender};
+use std::sync::Arc;
+use std::thread::JoinHandle;
+use std::time::{Duration, Instant};
 use std::{env, fs};
 
 use servo::protocol_handler::ProtocolRegistry;
@@ -32,6 +36,8 @@ use crate::running_app_state::RunningAppState;
 use crate::running_app_state::ServoshellGamepadDelegate;
 use crate::window::{PlatformWindow, ServoShellWindowId};
 
+const COOKIE_CLEANUP_INTERVAL: Duration = Duration::from_secs(60 * 60);
+
 pub(crate) enum AppState {
     Initializing,
     Running(Rc<RunningAppState>),
@@ -48,6 +54,9 @@ pub struct App {
     t_start: Instant,
     t: Instant,
     state: AppState,
+    cookie_cleanup_requested: Arc<AtomicBool>,
+    cookie_cleanup_stop: Option<SyncSender<()>>,
+    cookie_cleanup_worker: Option<JoinHandle<()>>,
 }
 
 impl App {
@@ -75,6 +84,9 @@ impl App {
             t_start: t,
             t,
             state: AppState::Initializing,
+            cookie_cleanup_requested: Arc::new(AtomicBool::new(false)),
+            cookie_cleanup_stop: None,
+            cookie_cleanup_worker: None,
         }
     }
 
@@ -137,7 +149,47 @@ impl App {
         ));
         running_state.open_window(platform_window, self.initial_url.as_url().clone());
 
+        self.start_cookie_cleanup_worker();
         self.state = AppState::Running(running_state);
+    }
+
+    fn start_cookie_cleanup_worker(&mut self) {
+        if self.cookie_cleanup_worker.is_some() {
+            return;
+        }
+
+        let requested = Arc::clone(&self.cookie_cleanup_requested);
+        let waker = self.waker.clone();
+        let (stop_tx, stop_rx) = sync_channel::<()>(0);
+
+        let worker = std::thread::Builder::new()
+            .name("bumble-bee-cookie-cleanup".to_owned())
+            .spawn(move || loop {
+                match stop_rx.recv_timeout(COOKIE_CLEANUP_INTERVAL) {
+                    Ok(()) | Err(RecvTimeoutError::Disconnected) => break,
+                    Err(RecvTimeoutError::Timeout) => {
+                        requested.store(true, Ordering::Release);
+                        waker.wake();
+                    },
+                }
+            })
+            .expect("Failed to start Bumble Bee cookie cleanup worker");
+
+        self.cookie_cleanup_stop = Some(stop_tx);
+        self.cookie_cleanup_worker = Some(worker);
+    }
+
+    fn perform_scheduled_cookie_cleanup(&self, state: &RunningAppState) {
+        if self
+            .cookie_cleanup_requested
+            .swap(false, Ordering::AcqRel)
+        {
+            // SiteDataManager::clear_cookies clears both the public and private cookie jars.
+            // This call is deliberately made on Servo's event-loop thread because
+            // SiteDataManager is not Sync and must not be accessed from the timer thread.
+            state.servo.site_data_manager().clear_cookies(None);
+            log::info!("Bumble Bee: automatically cleared all cookies after one hour");
+        }
     }
 
     #[servo::servo_tracing::instrument(level = "debug", skip_all)]
@@ -170,12 +222,25 @@ impl App {
             return false;
         };
 
+        self.perform_scheduled_cookie_cleanup(state);
+
         let create_platform_window = |url: Url| self.create_platform_window(url, active_event_loop);
         if !state.spin_event_loop(Some(&create_platform_window)) {
             self.state = AppState::ShuttingDown;
             return false;
         }
         true
+    }
+}
+
+impl Drop for App {
+    fn drop(&mut self) {
+        if let Some(stop) = self.cookie_cleanup_stop.take() {
+            let _ = stop.send(());
+        }
+        if let Some(worker) = self.cookie_cleanup_worker.take() {
+            let _ = worker.join();
+        }
     }
 }
 
