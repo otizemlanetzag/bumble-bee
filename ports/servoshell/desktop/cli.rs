@@ -20,7 +20,28 @@ pub fn main() {
     // Skip the first argument, which is the binary name.
     let args: Vec<String> = env::args().skip(1).collect();
     let (opts, preferences, servoshell_preferences) = match parse_command_line_arguments(&*args) {
-        ArgumentParsingResult::ContentProcess(token) => return servo::run_content_process(token),
+        ArgumentParsingResult::ContentProcess(token) => {
+            // The content process handles untrusted web content. Apply the
+            // OS-level hardening here, rather than to the browser/chrome
+            // process, so the browser can continue to act as the broker.
+            if let Err(error) = crate::os_sandbox::apply() {
+                #[cfg(any(target_os = "linux", target_os = "windows"))]
+                {
+                    eprintln!(
+                        "Bumble Bee content-process OS sandbox could not be applied: {error}"
+                    );
+                    std::process::exit(126);
+                }
+
+                #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+                {
+                    eprintln!(
+                        "Bumble Bee content-process OS sandbox is unavailable on this platform: {error}"
+                    );
+                }
+            }
+            return servo::run_content_process(token);
+        },
         ArgumentParsingResult::ChromeProcess(opts, preferences, servoshell_preferences) => {
             (opts, preferences, servoshell_preferences)
         },
