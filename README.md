@@ -1,13 +1,11 @@
 # The Bumble Bee Parallel Browser Engine Project
 
 Bumble Bee is a prototype web browser engine written in the
-[Rust](https://github.com/rust-lang/rust) language. It is currently developed on
+Rust language. It is currently developed on
 64-bit macOS, 64-bit Linux, 64-bit Windows, 64-bit OpenHarmony, and Android.
 
 Bumble Bee welcomes contribution from everyone. Check out:
 
-- The [Bumble Bee Book](https://book.servo.org) for documentation
-- The Bumble Bee website for news and guides
 
 Coordination of Bumble Bee development happens:
 - Here in the Github Issues
@@ -18,17 +16,8 @@ Coordination of Bumble Bee development happens:
 
 For more detailed build instructions, see the Bumble Bee documentation under [Getting the Code] and [Building Bumble Bee].
 
-[Getting the Code]: https://book.servo.org/building/getting-the-code.html
-[Building Bumble Bee]: https://book.servo.org/building/building.html
 
-### macOS
 
-- Download and install [Xcode](https://developer.apple.com/xcode/) and [`brew`](https://brew.sh/).
-- Install `uv`: `curl -LsSf https://astral.sh/uv/install.sh | sh`
-- Install `rustup`: `curl --proto '=https' -sSf https://sh.rustup.rs | sh`
-- Restart your shell to make sure `cargo` is available
-- Install the other dependencies: `./mach bootstrap`
-- Build Bumble Bee: `./mach build`
 
 ### Linux
 
