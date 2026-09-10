@@ -1,0 +1,35 @@
+name: Bumble bee
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest  # שרת Windows אמיתי שמכיל את רוב כלי ה-C++ מוכנים
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    # שלב הכרחי עבור Servo - התקנת הכלים הנדרשים לבניית הפרויקט
+    - name: Install Rust and Components
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        components: rust-src
+
+    # שלב הקימפול - במכונות Windows של GitHub Actions כבר מותקן Visual Studio Build Tools
+    - name: Build Project
+      run: |
+        cargo build --release
+      env:
+        # סרוו דורש לעיתים הגדרות ספציפיות כדי למצוא את כלי הקימפול של Windows
+        CARGO_INCREMENTAL: 0
+
+    - name: Upload Windows EXE
+      uses: actions/upload-artifact@v4
+      with:
+        name: servo-fork-windows
+        path: |
+          target/release/*.exe
+          target/release/*.dll
