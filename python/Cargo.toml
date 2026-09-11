@@ -1,0 +1,17 @@
+[package]
+name = "bumble-bee-python"
+version = "0.6.0"
+edition = "2024"
+license = "MPL-2.0"
+description = "Python bindings for the Bumble Bee Servo-based web engine"
+repository = "https://github.com/otizemlanetzag/bumble-bee"
+
+[workspace]
+
+[lib]
+name = "bumble_bee"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.29", features = ["extension-module"] }
+servo = { path = "../components/servo", features = ["bundled", "js_jit"] }
