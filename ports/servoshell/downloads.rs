@@ -116,12 +116,15 @@ impl DownloadManager {
     pub fn with_root(root: PathBuf) -> io::Result<Self> {
         fs::create_dir_all(&root)?;
         let state_file = root.join(".bumble-bee-downloads.json");
-        Ok(Self {
+        let manager = Self {
             root,
             state_file,
             active: Arc::new(Mutex::new(HashMap::new())),
             listeners: Arc::new(Mutex::new(Vec::new())),
-        })
+        };
+
+        manager.load_state()?;
+        Ok(manager)
     }
 
     /// Register a listener for download state/progress changes.
@@ -263,7 +266,6 @@ impl DownloadManager {
         let runtime = Builder::new_current_thread().enable_all().build()?;
         runtime.block_on(self.download(active))
             .map_err(|e| io::Error::other(e.to_string()))?;
-        self.active.lock().unwrap().remove(&id);
         self.persist()?;
         Ok(())
     }
@@ -484,6 +486,40 @@ impl DownloadManager {
         }
     }
 
+    fn load_state(&self) -> io::Result<()> {
+        if !self.state_file.exists() { return Ok(()); }
+        let bytes = fs::read(&self.state_file)?;
+        let entries: Vec<DownloadInfo> = serde_json::from_slice(&bytes).unwrap_or_default();
+        let mut active = self.active.lock().unwrap();
+        for mut info in entries {
+            if matches!(info.status, DownloadStatus::Downloading | DownloadStatus::Queued | DownloadStatus::Paused) {
+                let partial = info.destination.with_extension(format!("{}part", info.destination.extension().and_then(|e| e.to_str()).map(|e| format!("{e}. ")).unwrap_or_default().trim_end()));
+                if partial.exists() {
+                    info.status = DownloadStatus::Paused;
+                    info.downloaded_bytes = partial.metadata().map(|m| m.len()).unwrap_or(0);
+                } else {
+                    info.status = DownloadStatus::Failed;
+                    info.error = Some("Interrupted download has no partial file".into());
+                }
+            }
+            let id = info.id;
+            active.insert(id, Arc::new(ActiveDownload { info: Mutex::new(info), controls: Controls::default() }));
+        }
+        Ok(())
+    }
+
+    pub fn resume_interrupted(&self, id: Uuid) -> bool {
+        let Some(active) = self.active.lock().unwrap().get(&id).cloned() else { return false; };
+        if !matches!(active.info.lock().unwrap().status, DownloadStatus::Paused | DownloadStatus::Failed) { return false; }
+        active.controls.cancelled.store(false, Ordering::SeqCst);
+        active.controls.paused.store(false, Ordering::SeqCst);
+        if let Ok(mut info) = active.info.lock() { info.status = DownloadStatus::Queued; info.error = None; }
+        let manager = self.clone();
+        let _ = thread::Builder::new().name(format!("bumble-bee-download-resume-{id}")).spawn(move || {
+            if let Err(error) = manager.run(active) { manager.fail(id, error.to_string()); }
+        });
+        true
+    }
     fn persist(&self) -> io::Result<()> {
         let state: Vec<DownloadInfo> = self.list();
         let temporary = self.state_file.with_extension("json.tmp");
