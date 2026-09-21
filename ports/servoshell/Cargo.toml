@@ -89,12 +89,16 @@ log = { workspace = true }
 mime_guess = { workspace = true }
 raw-window-handle = { workspace = true }
 rustls = { workspace = true, features = ["aws-lc-rs"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
 servo = { workspace = true, features = ["background_hang_monitor", "bluetooth", "testbinding"], default-features = false }
 tokio = { workspace = true }
 tracing = { workspace = true, optional = true }
 tracing-perfetto = { workspace = true, optional = true }
 tracing-subscriber = { workspace = true, optional = true, features = ["env-filter"] }
 url = { workspace = true }
+uuid = { workspace = true }
 webdriver_server = { workspace = true }
 
 [target.'cfg(target_os = "android")'.dependencies]
@@ -141,6 +145,7 @@ egui_glow = { workspace = true, features = ["winit"] }
 gilrs = { workspace = true }
 glow = { workspace = true }
 headers = { workspace = true }
+dirs = { workspace = true }
 serde_json = { workspace = true }
 # For optional feature servo-allocator/use-jemalloc and servo-allocator/allocation-tracking
 servo-allocator = { workspace = true }
