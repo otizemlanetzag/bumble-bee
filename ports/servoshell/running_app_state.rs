@@ -267,8 +267,6 @@ impl RunningAppState {
             Cell::new(servoshell_preferences.experimental_preferences_enabled);
 
         let downloads = DownloadManager::new().expect("Could not initialize Downloads directory");
-        let download_waker = event_loop_waker.clone_box();
-        downloads.subscribe(move |_| download_waker.wake());
 
         Self {
             downloads,
