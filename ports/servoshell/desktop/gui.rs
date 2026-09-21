@@ -662,6 +662,20 @@ impl Gui {
                                 if matches!(download.status, crate::downloads::DownloadStatus::Downloading | crate::downloads::DownloadStatus::Paused | crate::downloads::DownloadStatus::Queued) && ui.button("Cancel").clicked() {
                                     state.downloads().cancel(download.id);
                                 }
+                                if matches!(download.status, crate::downloads::DownloadStatus::Paused | crate::downloads::DownloadStatus::Failed) && ui.button("Resume").clicked() {
+                                    state.downloads().resume_interrupted(download.id);
+                                }
+                                if matches!(download.status, crate::downloads::DownloadStatus::Completed) {
+                                    if ui.button("Open").clicked() {
+                                        let _ = state.downloads().open_file(download.id);
+                                    }
+                                    if ui.button("Show in folder").clicked() {
+                                        let _ = state.downloads().show_in_folder(download.id);
+                                    }
+                                }
+                                if matches!(download.status, crate::downloads::DownloadStatus::Completed | crate::downloads::DownloadStatus::Cancelled | crate::downloads::DownloadStatus::Failed) && ui.button("Remove").clicked() {
+                                    state.downloads().remove_history(download.id);
+                                }
                             });
                             if let Some(error) = download.error {
                                 ui.colored_label(egui::Color32::from_rgb(180, 40, 40), error);
