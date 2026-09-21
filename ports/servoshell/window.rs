@@ -341,6 +341,15 @@ impl ServoShellWindow {
                         active_webview.load(url.into_url());
                     }
                 },
+                UserInterfaceCommand::DownloadCurrent => {
+                    if let Some(active_webview) = self.active_webview() {
+                        if let Some(url) = active_webview.url() {
+                            if let Err(error) = state.downloads().start(url, None) {
+                                warn!("Failed to start download: {error}");
+                            }
+                        }
+                    }
+                },
                 UserInterfaceCommand::Back => {
                     if let Some(active_webview) = self.active_webview() {
                         active_webview.go_back(1);
