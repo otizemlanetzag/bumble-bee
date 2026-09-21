@@ -295,21 +295,31 @@ impl DownloadManager {
 
             self.set_status(&active, DownloadStatus::Downloading);
 
-            let request = Request::builder()
+            let destination = active.info.lock().unwrap().destination.clone();
+            let partial = destination.with_extension(format!(
+                "{}part",
+                destination.extension().and_then(|e| e.to_str()).map(|e| format!("{e}.")).unwrap_or_default()
+            ));
+            let existing = partial.metadata().map(|m| m.len()).unwrap_or(0);
+
+            // Resume an interrupted transfer when the server supports byte ranges.
+            let mut request_builder = Request::builder()
                 .method("GET")
                 .uri(url.as_str())
                 .header(header::ACCEPT, HeaderValue::from_static("*/*"))
-                .header(header::USER_AGENT, HeaderValue::from_static("BumbleBee/1.0"))
-                .body(http_body_util::Full::new(hyper::body::Bytes::new()))?;
-
-            let mut response = client.request(request).await?;
+                .header(header::USER_AGENT, HeaderValue::from_static("BumbleBee/1.0"));
+            if existing > 0 {
+                request_builder = request_builder.header(header::RANGE, format!("bytes={existing}-"));
+            }
+            let mut response = client
+                .request(request_builder.body(http_body_util::Full::new(hyper::body::Bytes::new()))?)
+                .await?;
 
             if response.status().is_redirection() {
                 let Some(location) = response.headers().get(header::LOCATION) else {
                     return Err("redirect response has no Location header".into());
                 };
-                let location = location.to_str()?;
-                url = url.join(location)?;
+                url = url.join(location.to_str()?)?;
                 redirects += 1;
                 continue;
             }
@@ -343,24 +353,10 @@ impl DownloadManager {
                 "{}part",
                 destination.extension().and_then(|e| e.to_str()).map(|e| format!("{e}.")).unwrap_or_default()
             ));
-
             let existing = partial.metadata().map(|m| m.len()).unwrap_or(0);
 
-            // Resume an interrupted transfer when the server supports byte ranges.
-            let mut request_builder = Request::builder()
-                .method("GET")
-                .uri(url.as_str())
-                .header(header::ACCEPT, HeaderValue::from_static("*/*"))
-                .header(header::USER_AGENT, HeaderValue::from_static("BumbleBee/1.0"));
-            if existing > 0 {
-                request_builder = request_builder.header(header::RANGE, format!("bytes={existing}-"));
-            }
-            let mut response = client.request(request_builder.body(http_body_util::Full::new(hyper::body::Bytes::new()))?).await?;
-
             // A server that ignores Range forces a clean restart.
-            let append = existing > 0 && response.status() == http::StatusCode::PARTIAL_CONTENT;
-            let existing = if append { existing } else { 0 };
-            let mut file = OpenOptions::new()
+            let append = existing > 0 && response.status() == http::StatusCode::PARTIAL_CONTENT;            let mut file = OpenOptions::new()
                 .create(true)
                 .write(true)
                 .truncate(!append)
