@@ -73,6 +73,7 @@ pub struct DownloadInfo {
     pub status: DownloadStatus,
     pub error: Option<String>,
     pub sha256: Option<String>,
+    pub speed_bytes_per_second: Option<u64>,
 }
 
 #[derive(Clone, Debug)]
@@ -159,6 +160,7 @@ impl DownloadManager {
             status: DownloadStatus::Queued,
             error: None,
             sha256: None,
+            speed_bytes_per_second: None,
         };
 
         let active = Arc::new(ActiveDownload {
@@ -229,6 +231,22 @@ impl DownloadManager {
             .unwrap()
             .get(&id)
             .and_then(|d| d.info.lock().ok().map(|i| i.clone()))
+    }
+
+    pub fn open_file(&self, id: Uuid) -> io::Result<()> {
+        let info = self.get(id).ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "download not found"))?;
+        open_path(&info.destination)
+    }
+
+    pub fn show_in_folder(&self, id: Uuid) -> io::Result<()> {
+        let info = self.get(id).ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "download not found"))?;
+        show_in_folder(&info.destination)
+    }
+
+    pub fn remove_history(&self, id: Uuid) -> bool {
+        let removed = self.active.lock().unwrap().remove(&id).is_some();
+        let _ = self.persist();
+        removed
     }
 
     pub fn list(&self) -> Vec<DownloadInfo> {
@@ -326,12 +344,28 @@ impl DownloadManager {
                 destination.extension().and_then(|e| e.to_str()).map(|e| format!("{e}.")).unwrap_or_default()
             ));
 
+            let existing = partial.metadata().map(|m| m.len()).unwrap_or(0);
+
+            // Resume an interrupted transfer when the server supports byte ranges.
+            let mut request_builder = Request::builder()
+                .method("GET")
+                .uri(url.as_str())
+                .header(header::ACCEPT, HeaderValue::from_static("*/*"))
+                .header(header::USER_AGENT, HeaderValue::from_static("BumbleBee/1.0"));
+            if existing > 0 {
+                request_builder = request_builder.header(header::RANGE, format!("bytes={existing}-"));
+            }
+            let mut response = client.request(request_builder.body(http_body_util::Full::new(hyper::body::Bytes::new()))?).await?;
+
+            // A server that ignores Range forces a clean restart.
+            let append = existing > 0 && response.status() == http::StatusCode::PARTIAL_CONTENT;
+            let existing = if append { existing } else { 0 };
             let mut file = OpenOptions::new()
                 .create(true)
-                .append(true)
+                .write(true)
+                .truncate(!append)
+                .append(append)
                 .open(&partial)?;
-
-            let existing = file.metadata()?.len();
             let total = response
                 .headers()
                 .get(header::CONTENT_LENGTH)
@@ -384,6 +418,13 @@ impl DownloadManager {
                 if last_update.elapsed() >= Duration::from_millis(250) {
                     let snapshot = active.info.lock().unwrap().clone();
                     self.emit(DownloadEvent::Progress(snapshot));
+                    let elapsed = last_update.elapsed().as_secs_f64();
+                    let speed = if elapsed > 0.0 {
+                        Some(((downloaded.saturating_sub(last_bytes)) as f64 / elapsed) as u64)
+                    } else { None };
+                    if let Some(speed) = speed {
+                        active.info.lock().unwrap().speed_bytes_per_second = Some(speed);
+                    }
                     last_update = Instant::now();
                     last_bytes = downloaded;
                 }
@@ -525,7 +566,7 @@ fn unique_filename(root: &Path, filename: &str) -> String {
     format!("{stem}-{}{}", Uuid::new_v4(), extension)
 }
 
-fn parse_content_disposition_filename(value: &str) -> Option<String> {
+pub fn parse_content_disposition_filename(value: &str) -> Option<String> {
     let mut fallback = None;
 
     for part in value.split(';').skip(1) {
@@ -591,4 +632,25 @@ mod tests {
             Some("report final.pdf".to_string())
         );
     }
+}
+
+
+fn open_path(path: &Path) -> io::Result<()> {
+    #[cfg(target_os = "windows")]
+    { std::process::Command::new("cmd").args(["/C", "start", "", &path.to_string_lossy()]).spawn()?.wait()?; }
+    #[cfg(target_os = "macos")]
+    { std::process::Command::new("open").arg(path).spawn()?.wait()?; }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    { std::process::Command::new("xdg-open").arg(path).spawn()?.wait()?; }
+    Ok(())
+}
+
+fn show_in_folder(path: &Path) -> io::Result<()> {
+    #[cfg(target_os = "windows")]
+    { std::process::Command::new("explorer").arg("/select,").arg(path).spawn()?; }
+    #[cfg(target_os = "macos")]
+    { std::process::Command::new("open").arg("-R").arg(path).spawn()?; }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    { std::process::Command::new("xdg-open").arg(path.parent().unwrap_or(path)).spawn()?; }
+    Ok(())
 }
