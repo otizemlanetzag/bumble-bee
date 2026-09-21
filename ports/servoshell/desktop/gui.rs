@@ -92,6 +92,7 @@ pub struct Gui {
     /// AccessKit tree updates pending the next egui tick.
     /// This allows us to ensure that graft nodes are sent before the subtrees they graft.
     pending_accesskit_updates: Vec<accesskit::TreeUpdate>,
+    downloads_open: bool,
 }
 
 fn truncate_with_ellipsis(input: &str, max_length: usize) -> String {
@@ -263,6 +264,7 @@ impl Gui {
             can_go_forward: false,
             favicon_textures: Default::default(),
             pending_accesskit_updates: vec![],
+            downloads_open: false,
         }
     }
 
@@ -484,6 +486,23 @@ impl Gui {
                             }
                             ui.add_space(2.0);
 
+                            let download_button = ui.add(Gui::toolbar_button("↓"));
+                            download_button.widget_info(|| {
+                                let mut info = WidgetInfo::new(WidgetType::Button);
+                                info.label = Some("Download current page".into());
+                                info
+                            });
+                            if download_button.clicked() {
+                                window.queue_user_interface_command(UserInterfaceCommand::DownloadCurrent);
+                                *downloads_open = true;
+                            }
+
+                            let downloads_button = ui.add(Gui::toolbar_button("⇩"))
+                                .on_hover_text("Downloads");
+                            if downloads_button.clicked() {
+                                *downloads_open = !*downloads_open;
+                            }
+
                             ui.allocate_ui_with_layout(
                                 ui.available_size(),
                                 egui::Layout::right_to_left(egui::Align::Center),
@@ -608,6 +627,47 @@ impl Gui {
                 *toolbar_height = Length::new(outer.response.rect.max.y);
             } else {
                 *toolbar_height = Length::default();
+            }
+
+            if *downloads_open {
+                egui::Window::new("Downloads")
+                    .collapsible(true)
+                    .resizable(true)
+                    .default_width(460.0)
+                    .show(ctx, |ui| {
+                        let downloads = state.downloads().list();
+                        if downloads.is_empty() {
+                            ui.label("No downloads yet.");
+                        }
+                        for download in downloads {
+                            ui.separator();
+                            ui.label(egui::RichText::new(&download.filename).strong());
+                            ui.small(download.url.clone());
+                            let progress = download.total_bytes
+                                .filter(|total| *total > 0)
+                                .map(|total| (download.downloaded_bytes as f32 / total as f32).clamp(0.0, 1.0));
+                            if let Some(progress) = progress {
+                                ui.add(egui::ProgressBar::new(progress).show_percentage());
+                            } else {
+                                ui.label(format!("{} bytes", download.downloaded_bytes));
+                            }
+                            ui.horizontal(|ui| {
+                                ui.label(format!("{:?}", download.status));
+                                if matches!(download.status, crate::downloads::DownloadStatus::Downloading) && ui.button("Pause").clicked() {
+                                    state.downloads().pause(download.id);
+                                }
+                                if matches!(download.status, crate::downloads::DownloadStatus::Paused) && ui.button("Resume").clicked() {
+                                    state.downloads().resume(download.id);
+                                }
+                                if matches!(download.status, crate::downloads::DownloadStatus::Downloading | crate::downloads::DownloadStatus::Paused | crate::downloads::DownloadStatus::Queued) && ui.button("Cancel").clicked() {
+                                    state.downloads().cancel(download.id);
+                                }
+                            });
+                            if let Some(error) = download.error {
+                                ui.colored_label(egui::Color32::from_rgb(180, 40, 40), error);
+                            }
+                        }
+                    });
             }
 
             let scale =
