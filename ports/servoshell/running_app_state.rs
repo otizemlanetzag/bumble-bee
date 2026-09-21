@@ -44,6 +44,7 @@ use url::Url;
     not(any(target_os = "android", target_env = "ohos"))
 ))]
 pub(crate) use crate::desktop::gamepad::ServoshellGamepadDelegate;
+use crate::downloads::DownloadManager;
 use crate::prefs::{EXPERIMENTAL_PREFS, ServoShellPreferences};
 use crate::webdriver::WebDriverEmbedderControls;
 use crate::window::{
@@ -171,6 +172,9 @@ pub(crate) enum UserInterfaceCommand {
 }
 
 pub(crate) struct RunningAppState {
+    /// Centralized browser download manager.
+    pub(crate) downloads: DownloadManager,
+
     /// The gamepad provider, used for handling gamepad events and set on each WebView.
     /// May be `None` if gamepad support is disabled or failed to initialize.
     #[cfg(all(
@@ -262,7 +266,12 @@ impl RunningAppState {
         let experimental_preferences_enabled =
             Cell::new(servoshell_preferences.experimental_preferences_enabled);
 
+        let downloads = DownloadManager::new().expect("Could not initialize Downloads directory");
+        let download_waker = event_loop_waker.clone_box();
+        downloads.subscribe(move |_| download_waker.wake());
+
         Self {
+            downloads,
             windows: Default::default(),
             focused_window: Default::default(),
             #[cfg(all(
@@ -331,6 +340,10 @@ impl RunningAppState {
 
     pub(crate) fn webdriver_receiver(&self) -> Option<&Receiver<WebDriverCommandMsg>> {
         self.webdriver_receiver.as_ref()
+    }
+
+    pub(crate) fn downloads(&self) -> &DownloadManager {
+        &self.downloads
     }
 
     pub(crate) fn servo(&self) -> &Servo {
