@@ -13,6 +13,8 @@ mod backtrace;
 mod crash_handler;
 #[cfg(not(any(target_os = "android", target_env = "ohos")))]
 pub(crate) mod desktop;
+#[cfg(not(any(target_os = "android", target_env = "ohos")))]
+mod downloads;
 #[cfg(any(target_os = "android", target_env = "ohos"))]
 mod egl;
 #[cfg(not(any(target_os = "android", target_env = "ohos")))]
