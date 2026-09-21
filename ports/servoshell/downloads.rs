@@ -73,6 +73,7 @@ pub struct DownloadInfo {
     pub status: DownloadStatus,
     pub error: Option<String>,
     pub sha256: Option<String>,
+    #[serde(default)]
     pub speed_bytes_per_second: Option<u64>,
 }
 
