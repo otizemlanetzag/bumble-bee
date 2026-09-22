@@ -32,9 +32,12 @@ use crate::VERSION;
 /// Keep browser-UI-dependent or site-registration APIs out of this list until
 /// Bumble Bee has a native UI path for them.
 pub(crate) static DEFAULT_COMPAT_PREFS: &[&str] = &[
+    "dom_composition_event_enabled",
+    "dom_credential_management_enabled",
     "dom_exec_command_enabled",
     "dom_sanitizer_enabled",
     "layout_columns_enabled",
+    "layout_flexbox_balance",
 ];
 
 /// Preferences enabled when servoshell is launched with the
