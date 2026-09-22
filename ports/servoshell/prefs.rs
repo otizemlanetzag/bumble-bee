@@ -31,6 +31,19 @@ use crate::VERSION;
 /// These preferences are disabled by default but activated in experimental mode.
 /// For more details, see the
 /// [experimental features documentation](https://book.servo.org/design-documentation/experimental-features.html).
+/// Experimental preferences that are useful for normal modern websites and are
+/// safe to enable in Bumble Bee's compatibility profile by default.
+///
+/// Keep browser-UI-dependent or site-registration APIs out of this list until
+/// Bumble Bee has a native UI path for them.
+pub(crate) static DEFAULT_COMPAT_PREFS: &[&str] = &[
+    "dom_exec_command_enabled",
+    "dom_sanitizer_enabled",
+    "layout_columns_enabled",
+];
+
+/// Preferences enabled when servoshell is launched with the
+/// `--enable-experimental-web-platform-features` flag.
 pub(crate) static EXPERIMENTAL_PREFS: &[&str] = &[
     "dom_async_clipboard_enabled",
     "dom_exec_command_enabled",
@@ -584,6 +597,14 @@ fn update_preferences_from_command_line_arguments(
     preferences: &mut Preferences,
     cmd_args: &CmdArgs,
 ) {
+    // Bumble Bee is intended to be a general-purpose browser, so enable the
+    // subset of Servo's experimental features that directly improves ordinary
+    // site compatibility. Features that require browser UI or explicit user
+    // permission remain opt-in.
+    for pref in DEFAULT_COMPAT_PREFS {
+        preferences.set_value(pref, PrefValue::Bool(true));
+    }
+
     if let Some(listen_address) = &cmd_args.devtools {
         preferences.devtools_server_enabled = true;
         preferences.devtools_server_listen_address = listen_address.clone();
