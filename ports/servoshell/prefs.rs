@@ -26,11 +26,6 @@ use url::Url;
 
 use crate::VERSION;
 
-/// Preferences enabled when servoshell is launched with the `--enable-experimental-web-platform-features` flag.
-///
-/// These preferences are disabled by default but activated in experimental mode.
-/// For more details, see the
-/// [experimental features documentation](https://book.servo.org/design-documentation/experimental-features.html).
 /// Experimental preferences that are useful for normal modern websites and are
 /// safe to enable in Bumble Bee's compatibility profile by default.
 ///
