@@ -382,7 +382,19 @@ impl Activatable for HTMLAnchorElement {
         }
 
         // Step 2.
-        // TODO: Download the link is `download` attribute is set.
+        if let Some(download_name) = element.get_attribute(&local_name!("download")) {
+            if let Some(href) = self.href() {
+                if let Ok(url) = ServoUrl::parse(&href.str()) {
+                    self.global().send_to_embedder(EmbedderMsg::DownloadRequest(
+                        self.global().webview_id(),
+                        url,
+                        download_name.map(|value| value.value()),
+                    ));
+                    return;
+                }
+            }
+        }
+
         follow_hyperlink(cx, element, self.relations.get(), ismap_suffix);
     }
 }
