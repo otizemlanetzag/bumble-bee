@@ -471,6 +471,8 @@ pub enum EmbedderMsg {
     Status(WebViewId, Option<String>),
     /// Alerts the embedder that the current page has changed its title.
     ChangePageTitle(WebViewId, Option<String>),
+    /// Request the embedder to download a resource instead of navigating to it.
+    DownloadRequest(WebViewId, ServoUrl, Option<String>),
     /// Move the window to a point
     MoveTo(WebViewId, DeviceIntPoint),
     /// Resize the window to size
